@@ -2,68 +2,56 @@
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
-    <title>Câmera Remota</title>
+    <title>Câmera Remota - Monitor</title>
+    <!-- Importa PeerJS -->
     <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
     <style>
-        body { background: #000; color: white; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
-        video { width: 100%; max-width: 640px; border: 2px solid #0f0; }
-        #status { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.7); padding: 5px; font-family: monospace; z-index: 10; }
+        body { background: #111; color: white; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; font-family: sans-serif; }
+        video { width: 100%; max-width: 640px; border: 2px solid #0f0; box-shadow: 0 0 15px rgba(0,255,0,0.3); }
+        #status { position: absolute; top: 20px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.8); padding: 10px 20px; border-radius: 5px; font-weight: bold; z-index: 100; }
+        .active { color: #0f0 !important; border: 1px solid #0f0; }
     </style>
 </head>
 <body>
-    <div id="status">Iniciando...</div>
-    <video id="remoteVideo" autoplay playsinline></video>
+    <div id="status">Aguardando Câmera...</div>
+    <video id="remoteVideo" autoplay playsinline muted></video>
 
     <script>
-        const ROOM_ID = 'sala-fixa-v2'; 
-        const peer = new Peer();
-        const status = document.getElementById('status');
-        const remoteVideo = document.getElementById('remoteVideo');
+        // ID ÚNICO DA SALA (Mantenha esse mesmo para você e para ela)
+        const ROOM_ID = 'monitor-camera-99'; 
 
-        peer.on('open', () => {
-            status.innerText = 'Aguardando sinal...';
+        const peer = new Peer(); // Cria conexão anônima
+        const statusEl = document.getElementById('status');
+        const videoEl = document.getElementById('remoteVideo');
+
+        peer.on('open', (id) => {
+            statusEl.innerText = 'Conectado ao servidor. Aguardando sinal...';
             
-            // Tenta conectar à sala
-            try {
-                const conn = peer.connect(ROOM_ID);
+            // Configura para ESCUTAR chamadas nesta sala
+            peer.on('call', (call) => {
+                // Aceita a chamada automaticamente
+                call.answer(); 
                 
-                conn.on('open', () => {
-                    status.innerText = 'Conectado. Solicitando câmera...';
-                    
-                    // Inicia A CÂMERA DA PESSOA QUE ABRIU O LINK
-                    navigator.mediaDevices.getUserMedia({ video: true, audio: false })
-                        .then((stream) => {
-                            status.innerText = 'Enviando...';
-                            
-                            // Chama a sala com o stream da pessoa
-                            const call = peer.call(ROOM_ID, stream);
-                            
-                            call.on('stream', (remoteStream) => {
-                                remoteVideo.srcObject = remoteStream;
-                                status.innerText = 'CÂMERA ATIVA!';
-                                status.style.color = '#0f0';
-                            });
-                            
-                            call.on('error', (err) => {
-                                status.innerText = 'Erro na chamada: ' + err;
-                            });
-                        })
-                        .catch(err => {
-                            status.innerText = 'Erro ao acessar câmera local: ' + err.message;
-                        });
+                statusEl.innerText = 'Recebendo vídeo...';
+                
+                // Quando o fluxo de vídeo chegar
+                call.on('stream', (stream) => {
+                    videoEl.srcObject = stream;
+                    statusEl.innerText = 'CÂMERA ATIVA!';
+                    statusEl.classList.add('active');
                 });
-            } catch (e) {
-                status.innerText = 'Erro de conexão: ' + e.message;
-            }
+                
+                call.on('error', (err) => {
+                    statusEl.innerText = 'Erro na conexão: ' + err;
+                });
+            });
         });
 
-        // Fallback para conexões diretas
-        peer.on('call', (call) => {
-            call.answer();
-            call.on('stream', (stream) => {
-                remoteVideo.srcObject = stream;
-                status.innerText = 'CÂMERA ATIVA!';
-            });
+        // Tenta se conectar à sala para garantir que estamos "na mesma frequência"
+        // Isso ajuda em alguns casos onde o signaling precisa ser inicializado
+        const conn = peer.connect(ROOM_ID);
+        conn.on('open', () => {
+             statusEl.innerText = 'Sala ativa. Aguardando entrada...';
         });
     </script>
 </body>
