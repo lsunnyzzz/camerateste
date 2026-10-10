@@ -112,7 +112,6 @@
             color: #666;
         }
 
-        /* Esconde elementos se não necessário */
         .hidden {
             display: none !important;
         }
@@ -126,7 +125,7 @@
         <div id="status" class="status-bar">Aguardando câmera...</div>
 
         <div id="monitorView" class="video-wrapper">
-            <!-- Vídeo Recebido (No PC) ou Local (No Celular) -->
+            <!-- Este elemento exibe tanto o vídeo local (no celular) quanto o remoto (no PC) -->
             <video id="remoteVideo" autoplay playsinline muted></video>
         </div>
 
@@ -161,7 +160,6 @@
 
         // INICIALIZA O PEER
         function initPeer() {
-            // Cria uma instância Peer aleatória para este dispositivo
             peer = new Peer();
 
             peer.on('open', (id) => {
@@ -170,18 +168,11 @@
 
             // Quando alguém chama este dispositivo (Lado Monitor)
             peer.on('call', (call) => {
-                // Responde automaticamente com o stream local se houver, 
-                // mas aqui queremos apenas RECEBER. 
-                // Como estamos usando um stream único, vamos usar o stream local 
-                // para áudio se precisássemos, mas aqui é só resposta.
                 call.answer(localStream || []); 
 
                 call.on('stream', (stream) => {
                     remoteVideo.srcObject = stream;
                     updateStatus("CÂMERA ATIVA!", true);
-                    
-                    // Se for PC, esconde o botão. Se for celular, mantém visível ou oculta conforme preferência.
-                    // Para simplificar, ocultamos o botão quando conectado.
                     btnSend.style.display = 'none';
                 });
 
@@ -207,24 +198,25 @@
                     video: { 
                         width: { ideal: 1280 }, 
                         height: { ideal: 720 },
-                        facingMode: "environment" // Tenta usar a câmera traseira
+                        facingMode: "environment" // Câmera traseira
                     }, 
                     audio: false 
                 });
 
-                // 2. Configura o vídeo local (para você ver o que está transmitindo)
+                // CORREÇÃO AQUI: Conecta o stream local ao elemento de vídeo
+                // Isso faz com que você VEJA o vídeo no celular enquanto transmite
                 remoteVideo.srcObject = localStream;
                 
-                // 3. Inicializa o Peer se ainda não estiver
+                // 2. Inicializa o Peer se necessário
                 if (!peer) initPeer();
 
-                // 4. Aguarda o Peer estar pronto
+                // 3. Aguarda o Peer estar pronto
                 if (peer.destroyed) {
                     initPeer();
                     await new Promise(resolve => setTimeout(resolve, 1000));
                 }
 
-                // 5. Tenta conectar ao ID fixo
+                // 4. Tenta conectar ao ID fixo
                 const call = peer.call(ROOM_ID, localStream);
 
                 call.on('open', () => {
@@ -249,7 +241,6 @@
 
         // Inicialização segura
         window.addEventListener('load', () => {
-            // Pequeno delay para garantir carregamento da biblioteca
             setTimeout(() => {
                 if(!peer) initPeer();
             }, 500);
