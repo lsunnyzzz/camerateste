@@ -2,128 +2,258 @@
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Câmera Remota</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Monitoramento Câmera Remota</title>
+    <!-- PeerJS Library -->
     <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
     <style>
-        body { 
-            background: #000; 
-            color: white; 
-            display: flex; 
-            flex-direction: column; 
-            justify-content: center; 
-            align-items: center; 
-            height: 100vh; 
-            margin: 0; 
-            font-family: sans-serif; 
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
         }
-        video { 
-            width: 95%; 
-            max-width: 640px; 
-            border: 3px solid #0f0; 
-            box-shadow: 0 0 20px rgba(0,255,0,0.4);
-            background: #111;
+
+        body {
+            background-color: #0a0a0a;
+            color: #ffffff;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            overflow: hidden;
         }
-        #status { 
-            position: absolute; 
-            top: 10px; 
-            left: 50%; 
-            transform: translateX(-50%); 
-            background: rgba(0,0,0,0.9); 
-            padding: 10px 20px; 
-            border-radius: 5px; 
-            font-weight: bold; 
-            z-index: 100; 
+
+        .container {
+            width: 100%;
+            max-width: 600px;
+            padding: 20px;
             text-align: center;
         }
-        .active { color: #0f0; border-color: #0f0; }
-        button { 
-            padding: 20px; 
-            font-size: 20px; 
-            margin-top: 20px; 
-            cursor: pointer; 
-            background: #0055ff; 
-            color: white; 
-            border: none; 
-            border-radius: 10px; 
-            width: 80%;
-            max-width: 300px;
-            font-weight: bold;
+
+        h1 {
+            font-size: 1.5rem;
+            margin-bottom: 10px;
+            color: #e0e0e0;
+            letter-spacing: 1px;
         }
-        button:active { background: #0033aa; }
+
+        .status-bar {
+            margin-bottom: 20px;
+            font-size: 0.9rem;
+            color: #888;
+            height: 20px;
+        }
+
+        .status-bar.active {
+            color: #00ff88;
+            font-weight: bold;
+            text-shadow: 0 0 5px #00ff88;
+        }
+
+        /* Container do Vídeo */
+        .video-wrapper {
+            position: relative;
+            width: 100%;
+            aspect-ratio: 9/16; /* Formato retrato para celulares */
+            background: #000;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 0 20px rgba(0, 255, 136, 0.2);
+            border: 2px solid #333;
+            transition: border-color 0.3s ease;
+        }
+
+        .video-wrapper.active {
+            border-color: #00ff88;
+            box-shadow: 0 0 25px rgba(0, 255, 136, 0.6);
+        }
+
+        video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+        }
+
+        /* Botão Principal */
+        .btn-container {
+            margin-top: 25px;
+        }
+
+        button {
+            background: linear-gradient(135deg, #00b09b, #96c93d);
+            border: none;
+            padding: 15px 30px;
+            font-size: 1.1rem;
+            font-weight: bold;
+            color: white;
+            border-radius: 50px;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(0, 255, 136, 0.3);
+            transition: transform 0.2s, box-shadow 0.2s;
+            width: 100%;
+            max-width: 300px;
+        }
+
+        button:active {
+            transform: scale(0.95);
+        }
+
+        button:disabled {
+            background: #444;
+            box-shadow: none;
+            cursor: not-allowed;
+        }
+
+        .info {
+            margin-top: 15px;
+            font-size: 0.8rem;
+            color: #666;
+        }
+
+        /* Esconde elementos se não necessário */
+        .hidden {
+            display: none !important;
+        }
     </style>
 </head>
 <body>
 
-    <!-- Status Visual -->
-    <div id="status">Aguardando câmera...</div>
+    <div class="container">
+        <h1>📷 Monitoramento Remoto</h1>
+        
+        <div id="status" class="status-bar">Aguardando câmera...</div>
 
-    <!-- Onde o vídeo vai aparecer -->
-    <video id="remoteVideo" autoplay playsinline muted></video>
+        <div id="monitorView" class="video-wrapper">
+            <!-- Vídeo Recebido (No PC) ou Local (No Celular) -->
+            <video id="remoteVideo" autoplay playsinline muted></video>
+        </div>
 
-    <!-- Botão para ela clicar -->
-    <button id="btnSend" onclick="enviarCamera()">CLIQUE PARA ENVIAR CÂMERA</button>
+        <div class="btn-container">
+            <button id="btnSend" onclick="enviarCamera()">CLIQUE PARA ENVIAR CÂMERA</button>
+        </div>
+
+        <div class="info">ID Fixo: monitor-fixo-xyz</div>
+    </div>
 
     <script>
-        // ID ÚNICO DA SALA - NÃO MEXA NESTE CÓDIGO
-        const ROOM_ID = 'monitor-fixo-xyz'; 
+        // CONFIGURAÇÃO GLOBAL
+        const ROOM_ID = 'monitor-fixo-xyz';
+        let peer = null;
+        let localStream = null;
 
-        const peer = new Peer(); // Conecta ao servidor gratuito
         const statusEl = document.getElementById('status');
-        const btn = document.getElementById('btnSend');
-        const videoEl = document.getElementById('remoteVideo');
+        const btnSend = document.getElementById('btnSend');
+        const remoteVideo = document.getElementById('remoteVideo');
+        const monitorView = document.getElementById('monitorView');
 
-        // Quando conectar ao servidor
-        peer.on('open', () => {
-            statusEl.innerText = 'Monitor Online. Aguardando...';
-            
-            // Modo ESCUTA: Fica esperando alguém chamar
+        function updateStatus(text, isActive = false) {
+            statusEl.textContent = text;
+            if (isActive) {
+                statusEl.classList.add('active');
+                monitorView.classList.add('active');
+            } else {
+                statusEl.classList.remove('active');
+                monitorView.classList.remove('active');
+            }
+        }
+
+        // INICIALIZA O PEER
+        function initPeer() {
+            // Cria uma instância Peer aleatória para este dispositivo
+            peer = new Peer();
+
+            peer.on('open', (id) => {
+                console.log('Meu ID Peer:', id);
+            });
+
+            // Quando alguém chama este dispositivo (Lado Monitor)
             peer.on('call', (call) => {
-                statusEl.innerText = 'Conectando...';
-                
-                // Aceita automaticamente
-                call.answer(); 
-                
-                // Quando receber o vídeo
+                // Responde automaticamente com o stream local se houver, 
+                // mas aqui queremos apenas RECEBER. 
+                // Como estamos usando um stream único, vamos usar o stream local 
+                // para áudio se precisássemos, mas aqui é só resposta.
+                call.answer(localStream || []); 
+
                 call.on('stream', (stream) => {
-                    videoEl.srcObject = stream;
-                    statusEl.innerText = 'CÂMERA ATIVA!';
-                    statusEl.classList.add('active');
+                    remoteVideo.srcObject = stream;
+                    updateStatus("CÂMERA ATIVA!", true);
                     
-                    // Esconde o botão no PC se quiser
-                    // btn.style.display = 'none'; 
+                    // Se for PC, esconde o botão. Se for celular, mantém visível ou oculta conforme preferência.
+                    // Para simplificar, ocultamos o botão quando conectado.
+                    btnSend.style.display = 'none';
+                });
+
+                call.on('close', () => {
+                    updateStatus("Conexão encerrada");
+                    remoteVideo.srcObject = null;
+                    btnSend.style.display = 'block';
+                    btnSend.textContent = "REINICIAR MONITOR";
                 });
             });
-        });
-
-        // Função que ela clica no celular
-        function enviarCamera() {
-            statusEl.innerText = 'Solicitando câmera...';
             
-            navigator.mediaDevices.getUserMedia({ video: true, audio: false })
-                .then((stream) => {
-                    statusEl.innerText = 'Enviando vídeo...';
-                    
-                    // Faz a chamada para a sala fixa
-                    const call = peer.call(ROOM_ID, stream);
-                    
-                    call.on('close', () => {
-                        statusEl.innerText = 'Conexão encerrada.';
-                        btn.innerText = "TENTAR NOVAMENTE";
-                    });
-                    
-                    call.on('error', (err) => {
-                        statusEl.innerText = 'Erro: ' + err;
-                    });
-                    
-                    // Se conseguir enviar, esconde o botão
-                    btn.style.display = 'none';
-                    statusEl.innerText = 'Transmitindo...';
-                })
-                .catch((err) => {
-                    alert('Não foi possível acessar a câmera: ' + err.message);
-                });
+            peer.on('error', (err) => {
+                console.error(err);
+                updateStatus("Erro de conexão", false);
+            });
         }
+
+        // FUNÇÃO PRINCIPAL: ENVIAR OU CONECTAR
+        async function enviarCamera() {
+            try {
+                // 1. Acessa a câmera
+                localStream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { 
+                        width: { ideal: 1280 }, 
+                        height: { ideal: 720 },
+                        facingMode: "environment" // Tenta usar a câmera traseira
+                    }, 
+                    audio: false 
+                });
+
+                // 2. Configura o vídeo local (para você ver o que está transmitindo)
+                remoteVideo.srcObject = localStream;
+                
+                // 3. Inicializa o Peer se ainda não estiver
+                if (!peer) initPeer();
+
+                // 4. Aguarda o Peer estar pronto
+                if (peer.destroyed) {
+                    initPeer();
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                }
+
+                // 5. Tenta conectar ao ID fixo
+                const call = peer.call(ROOM_ID, localStream);
+
+                call.on('open', () => {
+                    updateStatus("Transmitindo...", true);
+                    btnSend.style.display = 'none';
+                    btnSend.textContent = "CONECTADO";
+                });
+
+                call.on('error', (err) => {
+                    console.error(err);
+                    updateStatus("Falha na transmissão", false);
+                    btnSend.style.display = 'block';
+                    btnSend.textContent = "TENTAR NOVAMENTE";
+                });
+
+            } catch (err) {
+                console.error("Erro ao acessar câmera:", err);
+                alert("Não foi possível acessar a câmera. Verifique as permissões.");
+                updateStatus("Erro: Câmera indisponível", false);
+            }
+        }
+
+        // Inicialização segura
+        window.addEventListener('load', () => {
+            // Pequeno delay para garantir carregamento da biblioteca
+            setTimeout(() => {
+                if(!peer) initPeer();
+            }, 500);
+        });
     </script>
 </body>
 </html>
